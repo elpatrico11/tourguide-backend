@@ -1,127 +1,144 @@
 const express = require("express");
 const axios = require("axios");
+const cors = require("cors"); // Import CORS
 const app = express();
 const PORT = 3000;
 require("dotenv").config();
 
-const apiKey = process.env.ORS_API_KEY;
+// Load the API keys from the .env file
+const ORS_API_KEY = process.env.ORS_API_KEY;
+const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
+const JSONBIN_BIN_ID = process.env.JSONBIN_BIN_ID;
 
 app.use(express.json());
-
-// Sample routes data (as you provided)
-const routes = [
-  {
-    id: 1,
-    name: "Wawel Castle to Main Market Square",
-    start: { latitude: 50.0545, longitude: 19.9352 },
-    end: { latitude: 50.0614, longitude: 19.9372 },
-    waypoints: [
-      {
-        name: "Planty Park",
-        description:
-          "Encircling Kraków’s Old Town, Planty Park is a green belt where locals and tourists stroll among fountains, statues, and lush gardens.",
-        latitude: 50.0565,
-        longitude: 19.9383,
-      },
-      {
-        name: "St. Mary’s Basilica",
-        description:
-          "This Gothic masterpiece on Main Market Square features soaring towers and a stunning wooden altarpiece carved by Veit Stoss. Every hour, a bugle call sounds from the taller tower.",
-        latitude: 50.0616,
-        longitude: 19.939,
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "Kazimierz District to Schindler’s Factory Museum",
-    start: { latitude: 50.0519, longitude: 19.944 },
-    end: { latitude: 50.0462, longitude: 19.9615 },
-    waypoints: [
-      {
-        name: "Plac Nowy",
-        description:
-          "A popular square known for its quirky architecture and bustling food stalls, where you can try local delicacies, including the famous ‘zapiekanka’—a Polish open-faced sandwich.",
-        latitude: 50.0493,
-        longitude: 19.9447,
-      },
-      {
-        name: "Ghetto Heroes Square",
-        description:
-          "This somber square is a memorial to the Jewish residents of Kraków’s ghetto during World War II, symbolized by empty chairs representing the belongings left behind.",
-        latitude: 50.0483,
-        longitude: 19.9577,
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "Barbican to Wawel Castle",
-    start: { latitude: 50.0654, longitude: 19.9428 },
-    end: { latitude: 50.0545, longitude: 19.9352 },
-    waypoints: [
-      {
-        name: "Floriańska Street",
-        description:
-          "One of Kraków’s busiest streets, Floriańska is lined with vibrant shops, cafes, and historic buildings, leading from the city walls to the Main Market Square.",
-        latitude: 50.0637,
-        longitude: 19.9396,
-      },
-      {
-        name: "Sukiennice (Cloth Hall)",
-        description:
-          "Located in the heart of the Main Market Square, the Sukiennice is a Renaissance trading hall that now hosts local artisans selling traditional Polish crafts.",
-        latitude: 50.0615,
-        longitude: 19.9372,
-      },
-    ],
-  },
-];
+app.use(cors());
 
 // Endpoint to get all routes with basic information
-app.get("/routes", (req, res) => {
-  res.json(
-    routes.map((route) => ({
-      id: route.id,
-      name: route.name,
-      start: route.start,
-      end: route.end,
-    }))
-  );
-});
-
-// Endpoint to get route details by ID, including waypoints and descriptions
-app.get("/routes/:id", (req, res) => {
-  const route = routes.find((r) => r.id == req.params.id);
-  if (route) {
-    res.json(route);
-  } else {
-    res.status(404).send("Route not found");
-  }
-});
-
-// Endpoint to fetch route directions from OpenRouteService (ORS)
-app.get("/api/route", async (req, res) => {
-  const { startLon, startLat, endLon, endLat } = req.query;
-
+app.get("/routes", async (req, res) => {
   try {
     const response = await axios.get(
-      `https://api.openrouteservice.org/v2/directions/foot-walking`,
+      `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`,
       {
-        params: {
-          api_key: apiKey,
-          start: `${startLon},${startLat}`,
-          end: `${endLon},${endLat}`,
+        headers: {
+          "X-Master-Key": JSONBIN_API_KEY,
         },
       }
     );
-    res.json(response.data);
+
+    const routes = response.data.record.routes;
+
+    // Send basic information
+    res.json(
+      routes.map((route) => ({
+        id: route.id,
+        name: route.name,
+        start: route.start,
+        end: route.end,
+      }))
+    );
   } catch (error) {
-    console.error("Error fetching route data:", error);
+    console.error("Error fetching routes from JSONBin:", error.message);
+    res.status(500).json({ error: "Failed to fetch routes." });
+  }
+});
+
+// Endpoint to get detailed route information by ID
+app.get("/routes/:id", async (req, res) => {
+  const routeId = parseInt(req.params.id, 10);
+
+  try {
+    const response = await axios.get(
+      `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`,
+      {
+        headers: {
+          "X-Master-Key": JSONBIN_API_KEY,
+        },
+      }
+    );
+
+    const routes = response.data.record.routes;
+    const route = routes.find((r) => r.id === routeId);
+
+    if (route) {
+      res.json(route);
+    } else {
+      res.status(404).json({ error: "Route not found" });
+    }
+  } catch (error) {
+    console.error("Error fetching route from JSONBin:", error.message);
+    res.status(500).json({ error: "Failed to fetch route." });
+  }
+});
+
+// Endpoint to fetch route directions from OpenRouteService (ORS) with waypoints
+app.get("/api/route", async (req, res) => {
+  const { startLon, startLat, endLon, endLat, waypoints } = req.query;
+
+  // Validate required parameters
+  if (!startLon || !startLat || !endLon || !endLat) {
+    return res
+      .status(400)
+      .json({ error: "Missing required query parameters." });
+  }
+
+  // Initialize coordinates with the start point
+  let coordinates = [[parseFloat(startLon), parseFloat(startLat)]];
+
+  // Parse and add waypoints if provided
+  if (waypoints) {
+    try {
+      const parsedWaypoints = JSON.parse(waypoints);
+      if (Array.isArray(parsedWaypoints)) {
+        parsedWaypoints.forEach((wp) => {
+          if (wp.lon && wp.lat) {
+            coordinates.push([parseFloat(wp.lon), parseFloat(wp.lat)]);
+          }
+        });
+      }
+    } catch (e) {
+      return res.status(400).json({ error: "Invalid waypoints format." });
+    }
+  }
+
+  // Add the end point
+  coordinates.push([parseFloat(endLon), parseFloat(endLat)]);
+
+  try {
+    // Make a POST request to ORS with the coordinates
+    const response = await axios.post(
+      "https://api.openrouteservice.org/v2/directions/foot-walking/geojson",
+      {
+        coordinates: coordinates,
+      },
+      {
+        headers: {
+          Authorization: ORS_API_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Check if features exist
+    if (
+      response.data &&
+      response.data.features &&
+      response.data.features.length > 0
+    ) {
+      const routeGeometry = response.data.features[0].geometry.coordinates;
+
+      res.json({
+        routeGeometry: routeGeometry,
+      });
+    } else {
+      res.status(500).json({ error: "No route found." });
+    }
+  } catch (error) {
+    console.error("Error fetching route data:", error.message);
     res.status(500).json({ error: "Error fetching route data" });
   }
 });
 
+// Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
