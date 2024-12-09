@@ -130,11 +130,22 @@ app.get("/api/route", async (req, res) => {
         routeGeometry: routeGeometry,
       });
     } else {
+      console.error("No route found:", response.data);
       res.status(500).json({ error: "No route found." });
     }
   } catch (error) {
-    console.error("Error fetching route data:", error.message);
-    res.status(500).json({ error: "Error fetching route data" });
+    console.error("Error fetching route from ORS:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+
+    res
+      .status(500)
+      .json({
+        error: "Error fetching route data",
+        details: error.reponse?.data || error.message,
+      });
   }
 });
 
