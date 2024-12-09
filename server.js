@@ -100,11 +100,10 @@ app.get("/api/route", async (req, res) => {
     }
   }
 
-  // Add the end point
   coordinates.push([parseFloat(endLon), parseFloat(endLat)]);
 
   try {
-    // Make a POST request to ORS with the coordinates
+    console.log("Requesting ORS with coordinates:", coordinates);
     const response = await axios.post(
       "https://api.openrouteservice.org/v2/directions/foot-walking/geojson",
       {
@@ -118,7 +117,8 @@ app.get("/api/route", async (req, res) => {
       }
     );
 
-    // Check if features exist
+    console.log("ORS Response:", response.data);
+
     if (
       response.data &&
       response.data.features &&
@@ -138,7 +138,6 @@ app.get("/api/route", async (req, res) => {
   }
 });
 
-// Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
